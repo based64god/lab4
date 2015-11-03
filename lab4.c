@@ -17,9 +17,9 @@
 #define PW_UR_MIN 2027
 #define PW_UR_MAX 3502
 #define PW_UR_NEUT 2765
-#define PW_EC_MIN xxx
-#define PW_EC_MAX xxx
-#define PW_EC_NEUT xxx
+#define PW_EC_MIN 2275
+#define PW_EC_MAX 3295
+#define PW_EC_NEUT 2805
 #define PCA_START 28672
 
 //-----------------------------------------------------------------------------
@@ -30,18 +30,39 @@ void Interrupt_Init(void);
 void PCA_Init (void);
 void XBR0_Init(void);
 void SMB0_Init(void);
+void ADC_Init(void);
+
+void Adjust_Wheels(void);
 void Drive_Motor(void);
+
+unsigned int Read_Compass(void);
 unsigned int Read_Ranger(void);
-void ping(void);
+
+void ping_ranger(void);
 void PCA_ISR(void)__interrupt 9;
 
 //-----------------------------------------------------------------------------
 // Global Variables
 //-----------------------------------------------------------------------------
 unsigned int UR_PW=PW_UR_NEUT;
+unsigned int EC_PW=PW_EC_NEuT;
+
 unsigned int current_range=0;
-unsigned char wait,counter_80ms=0;
+
+unsigned char wait=0;
+
 unsigned char new_range_flag=1;
+unsigned char new_heading_flag = 1; // flag for count of compass timing
+
+int compass_adj = 0; // correction value from compass
+int range_adj = 0; // correction value from ranger
+
+unsigned char r_count=0; // overflow count for range
+unsigned char h_count=0; // overflow count for heading
+
+unsigned int current_heading = 0;
+unsigned int desired_heading = 900;
+
 
 __sbit __at 0xB6 SS;
 
@@ -57,6 +78,7 @@ main()
 	Port_Init(); 
 	Interrupt_Init();
 	PCA_Init();
+	ADC_Init();
 	XBR0_Init();
 	SMB0_Init();
 	while(wait<50);
@@ -65,16 +87,26 @@ main()
 		if (!SS)
 		{
 			UR_PW=PW_UR_NEUT;
+			EC_PW=EC_PW_NEUT;
+			PCA0CP0=0xFFFF - EC_PW;
 			PCA0CP2 = 0xFFFF - UR_PW;
 			while(!SS);
 		}
+
+		if (new_heading_flag)
+		{
+			// If there's a new heading available, read it and update the current value
+			Steering_Servo();
+			current_heading = ReadCompass();
+			printf("Degrees: %i\r\nServo pulsewidth:%u\r\n", current_heading,EC_PW);
+			new_heading = 0;
 
 		if (new_range_flag)
 		{
 			Drive_Motor();
 			current_range=Read_Ranger();
 			new_range_flag=0;
-			ping();
+			ping_ranger();
 			printf("Range: %u\r\nDrive pulsewidth: %u\r\n",current_range,UR_PW);
 		}
 	}
@@ -117,6 +149,34 @@ void SMB0_Init(void)
 	ENSMB=1;
 }
 
+void ADC_Init(void)
+{
+	REF0CN 	 =0x03;
+	ADC1CF	|=0x00;
+	ADC1CN	 =0x80;
+}
+
+void Adjust_Wheels(void)
+{
+	// Figure out the current error based on the desired and current heading
+	signed int error = (signed int) desired_heading - (signed int) current_heading;	
+	// Shift the error to be between -1800 and 1800
+	if (error > 1800)
+		error -= 3600;
+	else if (error < -1800)
+		error += 3600;	
+	// Figure out our desired pulsewidth using our value for k_p
+	EC_PW = EC_PW_NEUT + 5 * error / 12;
+	
+	// Make sure our desired pulsewidth is within the maximum bounds of the servo
+	if (EC_PW > EC_PW_MAX)
+		EC_PW = EC_PW_MAX;
+	else if (EC_PW < EC_PW_MIN)
+		EC_PW = EC_PW_MIN;
+	
+	// Update PCA pulsewidth
+    PCA0CP0 = 0xFFFF - EC_PW;
+}
 
 void Drive_Motor(void)
 {
@@ -126,6 +186,17 @@ void Drive_Motor(void)
 	else 												UR_PW=PW_UR_MAX-18*current_range;
 
 	PCA0CP2 = 0xFFFF - UR_PW;
+}
+
+unsigned int Read_Compass(void)
+{
+	unsigned char addr = 0xC0; // the address of the sensor, 0xC0 for the compass
+	unsigned char Data[2]; // Data is an array with a length of 2
+	unsigned int heading; // the heading returned in degrees between 0 and 3599
+	i2c_read_data(addr, 2, Data, 2); // read two byte, starting at reg 2
+	heading =(((unsigned int)Data[0] << 8) | Data[1]); //combine the two values
+	//heading has units of 1/10 of a degree 
+	return heading; // the heading returned in degrees between 0 and 3599
 }
 
 unsigned int Read_Ranger(void)
@@ -139,7 +210,7 @@ unsigned int Read_Ranger(void)
 	return range;
 }
 
-void ping(void)
+void ping_ranger(void)
 {	
 	// write 0x51 to reg 0 of the ranger:
 	unsigned char Data[1];
@@ -152,15 +223,21 @@ void ping(void)
 void PCA_ISR(void)__interrupt 9
 {
 	wait++;
-	counter_80ms++;
 	if(CF)
 	{
 		CF=0;
 		PCA0=PCA_START;
-		if(counter_80ms>=4)
+		h_count++;
+		if (h_count>=2)
 		{
-			counter_80ms=0;
-			new_range_flag=1; // 4 overflows is about 80 ms
+			new_heading_flag=1;
+			h_count=0;
+		}
+		r_count++;
+		if (r_count>=4)
+		{
+			new_range_flag=1;
+			r_count=0;
 		}
 	}
 
