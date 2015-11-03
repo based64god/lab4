@@ -38,6 +38,10 @@ void Drive_Motor(void);
 unsigned int Read_Compass(void);
 unsigned int Read_Ranger(void);
 
+unsigned char speed_from_ADC=0;
+unsigned char battery_from_ADC=0;
+
+unsigned char read_AD_input(unsigned char n);
 void ping_ranger(void);
 void PCA_ISR(void)__interrupt 9;
 
@@ -64,7 +68,7 @@ unsigned int current_heading = 0;
 unsigned int desired_heading = 900;
 
 
-__sbit __at 0xB6 SS;
+__sbit __at 0xB6 RUN;
 
 /********************************************************************/
 /********************************************************************/
@@ -84,22 +88,27 @@ main()
 	while(wait<50);
 	while (1)
 	{
-		if (!SS)
-		{
-			UR_PW=PW_UR_NEUT;
-			EC_PW=EC_PW_NEUT;
-			PCA0CP0=0xFFFF - EC_PW;
-			PCA0CP2 = 0xFFFF - UR_PW;
-			while(!SS);
-		}
-
+		run_stop = 0;
+ 		while (!RUN) // make RUN an sbit for the run/stop switch
+		{ // stay in loop until switch is in run position
+ 			if (run_stop == 0)
+ 			{
+ 				UR_PW=PW_UR_NEUT;
+				EC_PW=EC_PW_NEUT;
+				PCA0CP0=0xFFFF - EC_PW;
+				PCA0CP2 = 0xFFFF - UR_PW;
+ 				desired_heading = pick_heading();
+				desired_range = pick_range();
+				run_stop = 1: // only try to update desired heading once
+ 			}
+ 		}
 		if (new_heading_flag)
 		{
 			// If there's a new heading available, read it and update the current value
 			Steering_Servo();
 			current_heading = ReadCompass();
 			printf("Degrees: %i\r\nServo pulsewidth:%u\r\n", current_heading,EC_PW);
-			new_heading = 0;
+			new_heading_flag = 0;
 
 		if (new_range_flag)
 		{
@@ -116,7 +125,8 @@ main()
 void Port_Init(void)
 {
 	P0MDOUT = 0xFF;
-	P1MDOUT = 0xFF;//set output pin for CEX2 in push-pull mode
+	P1MDOUT = 0xFC;//set output pin for CEX2 in push-pull mode
+
 	P3MDOUT = 0x00;
 
 	P3		= 0xFF;
@@ -180,10 +190,10 @@ void Adjust_Wheels(void)
 
 void Drive_Motor(void)
 {
-	if(current_range<=10) 								UR_PW=PW_UR_MAX;
+	if(current_range<=10) 								UR_PW=PW_UR_MIN;
 	else if (current_range>=40 && current_range <=50) 	UR_PW=PW_UR_NEUT;
-	else if (current_range>=90) 						UR_PW=PW_UR_MIN;
-	else 												UR_PW=PW_UR_MAX-18*current_range;
+	else if (current_range>=90) 						UR_PW=PW_UR_MAX;
+	else 												UR_PW=PW_UR_MIN+18*current_range;
 
 	PCA0CP2 = 0xFFFF - UR_PW;
 }
@@ -219,6 +229,14 @@ void ping_ranger(void)
 	i2c_write_data(addr, 0, Data , 1) ; // write one byte of data to reg 0 at addr
 }
 
+unsigned char read_AD_input(unsigned char n)
+{
+	AMX1SL = n; // Set P1.n as the analog input for ADC1
+	ADC1CN = ADC1CN & ~0x20; // Clear the “Conversion Completed” flag
+	ADC1CN = ADC1CN | 0x10; // Initiate A/D conversion
+	while ((ADC1CN & 0x20) == 0x00);// Wait for conversion to complete
+	return ADC1; // Return digital value in ADC1 register
+}
 
 void PCA_ISR(void)__interrupt 9
 {
