@@ -64,12 +64,8 @@ unsigned char h_count = 0; // overflow count for heading
 unsigned int current_heading = 0;
 unsigned int desired_heading = 900;
 
-
 __sbit __at 0xB6 RUN;
 
-/********************************************************************/
-/********************************************************************/
-/********************************************************************/
 /********************************************************************/
 
 void main()
@@ -87,22 +83,19 @@ void main()
 	
 	while (1)
 	{
-		run_stop = 0;
-
-		// stay in loop until switch is in run position
- 		while (!RUN)
+		// Wait in neutral until switch is in run position
+		if (!RUN)
 		{
- 			if (run_stop == 0)
- 			{
- 				UR_PW = PW_UR_NEUT;
-				EC_PW = EC_PW_NEUT;
-				PCA0CP0 = 0xFFFF - EC_PW;
-				PCA0CP2 = 0xFFFF - UR_PW;
- 				desired_heading = pick_heading();
-				desired_range = pick_range();
-				run_stop = 1: // only try to update desired heading once
- 			}
- 		}
+			UR_PW = PW_UR_NEUT;
+			EC_PW = EC_PW_NEUT;
+			PCA0CP0 = 0xFFFF - EC_PW;
+			PCA0CP2 = 0xFFFF - UR_PW;
+			desired_heading = pick_heading();
+			desired_range = pick_range();
+			
+			while (!RUN);
+		}
+
 		if (new_heading_flag)
 		{
 			// If there's a new heading available, read it and update the current value
