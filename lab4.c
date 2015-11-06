@@ -3,7 +3,7 @@
  * Section: 4A
  * Date: 2015
  * Filename: lab4.c
- * Description: 
+ * Description: TODO
  */
 
 #include <c8051_SDCC.h>// include files. This file is available online
@@ -64,6 +64,8 @@ unsigned char h_count = 0; // overflow count for heading
 unsigned int current_heading = 0;
 unsigned int desired_heading = 900;
 
+unsigned char steeringGain = 0;
+
 __sbit __at 0xB6 RUN;
 
 /********************************************************************/
@@ -81,40 +83,64 @@ void main()
 	
 	while (wait < 50);
 	
+	chooseDesiredHeading();
+	chooseSteeringGain();
+	
+	// TODO: Read speed pot and update max pulsewidth
+	
 	while (1)
-	{
-		// Wait in neutral until switch is in run position
-		if (!RUN)
-		{
-			UR_PW = PW_UR_NEUT;
-			EC_PW = EC_PW_NEUT;
-			PCA0CP0 = 0xFFFF - EC_PW;
-			PCA0CP2 = 0xFFFF - UR_PW;
-			desired_heading = pick_heading();
-			desired_range = pick_range();
-			
-			while (!RUN);
-		}
-
-		if (new_heading_flag)
-		{
-			// If there's a new heading available, read it and update the current value
-			Steering_Servo();
-			current_heading = ReadCompass();
-			printf("Degrees: %i\r\nServo pulsewidth:%u\r\n", current_heading, EC_PW);
-			new_heading_flag = 0;
-
-		if (new_range_flag)
-		{
-			Drive_Motor();
-			current_range = Read_Ranger();
-			new_range_flag = 0;
-			ping_ranger();
-			printf("Range: %u\r\nDrive pulsewidth: %u\r\n", current_range, UR_PW);
-		}
-	}
+		process();
 }
 
+void process()
+{
+	// Wait in neutral until switch is in run position
+	if (!RUN)
+	{
+		UR_PW = PW_UR_NEUT;
+		EC_PW = EC_PW_NEUT;
+		PCA0CP0 = 0xFFFF - EC_PW;
+		PCA0CP2 = 0xFFFF - UR_PW;
+		desired_heading = pick_heading();
+		desired_range = pick_range();
+		
+		while (!RUN);
+	}
+
+	if (new_heading_flag)
+	{
+		// If there's a new heading available, read it and update the current value
+		Steering_Servo();
+		current_heading = ReadCompass();
+		printf("Degrees: %i\r\nServo pulsewidth:%u\r\n", current_heading, EC_PW);
+		new_heading_flag = 0;
+
+	if (new_range_flag)
+	{
+		Drive_Motor();
+		current_range = Read_Ranger();
+		new_range_flag = 0;
+		ping_ranger();
+		printf("Range: %u\r\nDrive pulsewidth: %u\r\n", current_range, UR_PW);
+	}
+	
+	updateLCD();
+}
+
+void chooseDesiredHeading(void)
+{
+	// TODO
+}
+
+void chooseSteeringGain(void)
+{
+	// TODO
+}
+
+void updateLCD(void)
+{
+	// TODO
+}
 
 void Port_Init(void)
 {
@@ -269,5 +295,4 @@ void PCA_ISR(void)__interrupt 9
 	}
 
 	PCA0CN &= 0xC0;
-
 }
