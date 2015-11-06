@@ -4,7 +4,7 @@
     Date: 11/3/15
     File name: Lab4
     Description: FULL ON CAR MODE
-    KANYE CODE: COLLEGE DROPOUT SON
+    KANYE CODE: COLLEGE DROPOUT SON Test
 */
 /*
   read range from ranger and use it to control the motor
