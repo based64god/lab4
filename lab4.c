@@ -1,14 +1,10 @@
-/*  Names: Kyle Ritchie and Emmett Hitz
-		   Daniel Centore and Adam Stancyzk
-    Section: 4A
-    Date: 11/3/15
-    File name: Lab4
-    Description: FULL ON CAR MODE
-    KANYE CODE: COLLEGE DROPOUT SON Test
-*/
-/*
-  read range from ranger and use it to control the motor
-*/
+/**
+ * Names: Kyle Ritchie, Emmett Hitz, Daniel Centore, Adam Stanczyk
+ * Section: 4A
+ * Date: 2015
+ * Filename: lab4.c
+ * Description: 
+ */
 
 #include <c8051_SDCC.h>// include files. This file is available online
 #include <stdio.h>
@@ -43,26 +39,26 @@ unsigned char battery_from_ADC=0;
 
 unsigned char read_AD_input(unsigned char n);
 void ping_ranger(void);
-void PCA_ISR(void)__interrupt 9;
+void PCA_ISR(void) __interrupt 9;
 
 //-----------------------------------------------------------------------------
 // Global Variables
 //-----------------------------------------------------------------------------
-unsigned int UR_PW=PW_UR_NEUT;
-unsigned int EC_PW=PW_EC_NEuT;
+unsigned int UR_PW = PW_UR_NEUT;
+unsigned int EC_PW = PW_EC_NEuT;
 
-unsigned int current_range=0;
+unsigned int current_range = 0;
 
-unsigned char wait=0;
+unsigned char wait = 0;
 
-unsigned char new_range_flag=1;
+unsigned char new_range_flag = 1;
 unsigned char new_heading_flag = 1; // flag for count of compass timing
 
 int compass_adj = 0; // correction value from compass
 int range_adj = 0; // correction value from ranger
 
-unsigned char r_count=0; // overflow count for range
-unsigned char h_count=0; // overflow count for heading
+unsigned char r_count = 0; // overflow count for range
+unsigned char h_count = 0; // overflow count for heading
 
 unsigned int current_heading = 0;
 unsigned int desired_heading = 900;
@@ -75,7 +71,7 @@ __sbit __at 0xB6 RUN;
 /********************************************************************/
 /********************************************************************/
 
-main()
+void main()
 {
 	Sys_Init(); // Initialize the C8051 board
 	putchar(' '); // Required for output to terminal
@@ -85,17 +81,21 @@ main()
 	ADC_Init();
 	XBR0_Init();
 	SMB0_Init();
-	while(wait<50);
+	
+	while (wait < 50);
+	
 	while (1)
 	{
 		run_stop = 0;
- 		while (!RUN) // make RUN an sbit for the run/stop switch
-		{ // stay in loop until switch is in run position
+
+		// stay in loop until switch is in run position
+ 		while (!RUN)
+		{
  			if (run_stop == 0)
  			{
- 				UR_PW=PW_UR_NEUT;
-				EC_PW=EC_PW_NEUT;
-				PCA0CP0=0xFFFF - EC_PW;
+ 				UR_PW = PW_UR_NEUT;
+				EC_PW = EC_PW_NEUT;
+				PCA0CP0 = 0xFFFF - EC_PW;
 				PCA0CP2 = 0xFFFF - UR_PW;
  				desired_heading = pick_heading();
 				desired_range = pick_range();
@@ -113,10 +113,10 @@ main()
 		if (new_range_flag)
 		{
 			Drive_Motor();
-			current_range=Read_Ranger();
-			new_range_flag=0;
+			current_range = Read_Ranger();
+			new_range_flag = 0;
 			ping_ranger();
-			printf("Range: %u\r\nDrive pulsewidth: %u\r\n",current_range,UR_PW);
+			printf("Range: %u\r\nDrive pulsewidth: %u\r\n", current_range, UR_PW);
 		}
 	}
 }
@@ -125,26 +125,26 @@ main()
 void Port_Init(void)
 {
 	P0MDOUT = 0xFF;
-	P1MDOUT = 0xFC;//set output pin for CEX2 in push-pull mode
+	P1MDOUT = 0xFC; //set output pin for CEX2 in push-pull mode
 
 	P3MDOUT = 0x00;
 
-	P3		= 0xFF;
+	P3 = 0xFF;
 }
 
 
 void Interrupt_Init(void)
 {
-	EA=1;
+	EA = 1;
 	EIE1 |=0x08;
 }
 
 
 void PCA_Init (void)
 {
-	PCA0CPM2=0xC2;
-	PCA0MD=0x81;
-	PCA0CN=0x40;
+	PCA0CPM2 = 0xC2;
+	PCA0MD = 0x81;
+	PCA0CN = 0x40;
 }
 
 
@@ -155,8 +155,8 @@ void XBR0_Init(void)
 
 void SMB0_Init(void)
 {
-	SMB0CR=0x93;
-	ENSMB=1;
+	SMB0CR = 0x93;
+	ENSMB = 1;
 }
 
 void ADC_Init(void)
@@ -190,10 +190,22 @@ void Adjust_Wheels(void)
 
 void Drive_Motor(void)
 {
-	if(current_range<=10) 								UR_PW=PW_UR_MIN;
-	else if (current_range>=40 && current_range <=50) 	UR_PW=PW_UR_NEUT;
-	else if (current_range>=90) 						UR_PW=PW_UR_MAX;
-	else 												UR_PW=PW_UR_MIN+18*current_range;
+	if (current_range <= 10)
+	{
+		UR_PW=PW_UR_MIN;
+	}
+	else if (current_range >= 40 && current_range <= 50)
+	{
+		UR_PW=PW_UR_NEUT;
+	}
+	else if (current_range>=90)
+	{
+		UR_PW=PW_UR_MAX;
+	}
+	else
+	{
+		UR_PW = PW_UR_MIN + 18 * current_range;
+	}
 
 	PCA0CP2 = 0xFFFF - UR_PW;
 }
@@ -241,21 +253,23 @@ unsigned char read_AD_input(unsigned char n)
 void PCA_ISR(void)__interrupt 9
 {
 	wait++;
-	if(CF)
+	if (CF)
 	{
-		CF=0;
-		PCA0=PCA_START;
+		CF = 0;
+		PCA0 = PCA_START;
+		
 		h_count++;
-		if (h_count>=2)
+		if (h_count >= 2)
 		{
-			new_heading_flag=1;
-			h_count=0;
+			new_heading_flag = 1;
+			h_count = 0;
 		}
+		
 		r_count++;
-		if (r_count>=4)
+		if (r_count >= 4)
 		{
-			new_range_flag=1;
-			r_count=0;
+			new_range_flag = 1;
+			r_count = 0;
 		}
 	}
 
