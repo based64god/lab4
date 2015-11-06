@@ -34,9 +34,6 @@ void Drive_Motor(void);
 unsigned int Read_Compass(void);
 unsigned int Read_Ranger(void);
 
-unsigned char speed_from_ADC=0;
-unsigned char battery_from_ADC=0;
-
 unsigned char read_AD_input(unsigned char n);
 void ping_ranger(void);
 void PCA_ISR(void) __interrupt 9;
@@ -44,6 +41,10 @@ void PCA_ISR(void) __interrupt 9;
 //-----------------------------------------------------------------------------
 // Global Variables
 //-----------------------------------------------------------------------------
+
+unsigned char speed_from_ADC = 0;
+unsigned char battery_from_ADC = 0;
+
 unsigned int UR_PW = PW_UR_NEUT;
 unsigned int EC_PW = PW_EC_NEuT;
 
@@ -107,7 +108,7 @@ void main()
 			// If there's a new heading available, read it and update the current value
 			Steering_Servo();
 			current_heading = ReadCompass();
-			printf("Degrees: %i\r\nServo pulsewidth:%u\r\n", current_heading,EC_PW);
+			printf("Degrees: %i\r\nServo pulsewidth:%u\r\n", current_heading, EC_PW);
 			new_heading_flag = 0;
 
 		if (new_range_flag)
@@ -161,9 +162,9 @@ void SMB0_Init(void)
 
 void ADC_Init(void)
 {
-	REF0CN 	 =0x03;
-	ADC1CF	|=0x00;
-	ADC1CN	 =0x80;
+	REF0CN = 0x03;
+	ADC1CF |= 0x00;
+	ADC1CN = 0x80;
 }
 
 void Adjust_Wheels(void)
@@ -174,7 +175,8 @@ void Adjust_Wheels(void)
 	if (error > 1800)
 		error -= 3600;
 	else if (error < -1800)
-		error += 3600;	
+		error += 3600;
+	
 	// Figure out our desired pulsewidth using our value for k_p
 	EC_PW = EC_PW_NEUT + 5 * error / 12;
 	
@@ -192,15 +194,15 @@ void Drive_Motor(void)
 {
 	if (current_range <= 10)
 	{
-		UR_PW=PW_UR_MIN;
+		UR_PW = PW_UR_MIN;
 	}
 	else if (current_range >= 40 && current_range <= 50)
 	{
-		UR_PW=PW_UR_NEUT;
+		UR_PW = PW_UR_NEUT;
 	}
-	else if (current_range>=90)
+	else if (current_range >= 90)
 	{
-		UR_PW=PW_UR_MAX;
+		UR_PW = PW_UR_MAX;
 	}
 	else
 	{
@@ -216,7 +218,7 @@ unsigned int Read_Compass(void)
 	unsigned char Data[2]; // Data is an array with a length of 2
 	unsigned int heading; // the heading returned in degrees between 0 and 3599
 	i2c_read_data(addr, 2, Data, 2); // read two byte, starting at reg 2
-	heading =(((unsigned int)Data[0] << 8) | Data[1]); //combine the two values
+	heading =(((unsigned int) Data[0] << 8) | Data[1]); //combine the two values
 	//heading has units of 1/10 of a degree 
 	return heading; // the heading returned in degrees between 0 and 3599
 }
@@ -224,11 +226,11 @@ unsigned int Read_Compass(void)
 unsigned int Read_Ranger(void)
 {
 	unsigned char Data[2];
-	unsigned int range =0;
+	unsigned int range = 0;
 	// the address of the ranger is 0xE0
-	unsigned char addr=0xE0;
+	unsigned char addr = 0xE0;
 	i2c_read_data(addr, 2, Data, 2); // read two bytes, starting at reg 2
-	range = (((unsigned int)Data[0] << 8) | Data[1]);
+	range = (((unsigned int) Data[0] << 8) | Data[1]);
 	return range;
 }
 
@@ -236,8 +238,8 @@ void ping_ranger(void)
 {	
 	// write 0x51 to reg 0 of the ranger:
 	unsigned char Data[1];
-	unsigned char addr=0xE0;
-	Data[0]=0x51;
+	unsigned char addr = 0xE0;
+	Data[0] = 0x51;
 	i2c_write_data(addr, 0, Data , 1) ; // write one byte of data to reg 0 at addr
 }
 
