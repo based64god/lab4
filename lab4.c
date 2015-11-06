@@ -10,12 +10,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <i2c.h>
-#define PW_UR_MIN 2027
-#define PW_UR_MAX 3502
-#define PW_UR_NEUT 2765
-#define PW_EC_MIN 2275
-#define PW_EC_MAX 3295
-#define PW_EC_NEUT 2805
+#define DRIVE_PW_MIN 2027
+#define DRIVE_PW_MAX 3502
+#define DRIVE_PW_NEUT 2765
+#define STEER_PW_MIN 2275
+#define STEER_PW_MAX 3295
+#define STEER_PW_NEUT 2805
 #define PCA_START 28672
 
 //-----------------------------------------------------------------------------
@@ -28,6 +28,8 @@ void XBR0_Init(void);
 void SMB0_Init(void);
 void ADC_Init(void);
 
+void Pick_Heading(void);
+
 void Adjust_Wheels(void);
 void Drive_Motor(void);
 
@@ -35,18 +37,18 @@ unsigned int Read_Compass(void);
 unsigned int Read_Ranger(void);
 
 unsigned char read_AD_input(unsigned char n);
-void ping_ranger(void);
+void Ping_Ranger(void);
 void PCA_ISR(void) __interrupt 9;
 
 //-----------------------------------------------------------------------------
 // Global Variables
 //-----------------------------------------------------------------------------
 
-unsigned char speed_from_ADC = 0;
-unsigned char battery_from_ADC = 0;
+unsigned char speed_from_pot = 0;
+unsigned char battery_level = 0;
 
-unsigned int UR_PW = PW_UR_NEUT;
-unsigned int EC_PW = PW_EC_NEuT;
+unsigned int drive_pw = DRIVE_PW_NEUT;
+unsigned int steer_pw = STEER_PW_NEuT;
 
 unsigned int current_range = 0;
 
@@ -60,11 +62,12 @@ int range_adj = 0; // correction value from ranger
 
 unsigned char r_count = 0; // overflow count for range
 unsigned char h_count = 0; // overflow count for heading
+unsigned char b_count = 0; // overflow count for battery reading
 
 unsigned int current_heading = 0;
 unsigned int desired_heading = 900;
 
-unsigned char steeringGain = 0;
+unsigned char steering_gain = 0;
 
 __sbit __at 0xB6 RUN;
 
@@ -81,29 +84,26 @@ void main()
 	XBR0_Init();
 	SMB0_Init();
 	
+	Update_Battery();
 	while (wait < 50);
-	
-	chooseDesiredHeading();
-	chooseSteeringGain();
-	
-	// TODO: Read speed pot and update max pulsewidth
+	Pick_Heading();
+	Pick_S_Gain();
+	Update_Speed();
+
 	
 	while (1)
-		process();
+		Process();
 }
 
-void process()
+void Process()
 {
 	// Wait in neutral until switch is in run position
 	if (!RUN)
 	{
-		UR_PW = PW_UR_NEUT;
-		EC_PW = EC_PW_NEUT;
-		PCA0CP0 = 0xFFFF - EC_PW;
-		PCA0CP2 = 0xFFFF - UR_PW;
-		desired_heading = pick_heading();
-		desired_range = pick_range();
-		
+		drive_pw = DRIVE_PW_NEUT;
+		steer_pw = steer_pw_NEUT;
+		PCA0CP0 = 0xFFFF - steer_pw;
+		PCA0CP2 = 0xFFFF - drive_pw;
 		while (!RUN);
 	}
 
@@ -112,7 +112,7 @@ void process()
 		// If there's a new heading available, read it and update the current value
 		Steering_Servo();
 		current_heading = ReadCompass();
-		printf("Degrees: %i\r\nServo pulsewidth:%u\r\n", current_heading, EC_PW);
+		printf("Degrees: %i\r\nServo pulsewidth:%u\r\n", current_heading, steer_pw);
 		new_heading_flag = 0;
 
 	if (new_range_flag)
@@ -120,35 +120,23 @@ void process()
 		Drive_Motor();
 		current_range = Read_Ranger();
 		new_range_flag = 0;
-		ping_ranger();
-		printf("Range: %u\r\nDrive pulsewidth: %u\r\n", current_range, UR_PW);
+		Ping_Ranger();
+		printf("Range: %u\r\nDrive pulsewidth: %u\r\n", current_range, drive_pw);
 	}
 	
-	updateLCD();
+	Update_LCD();
 }
 
-void chooseDesiredHeading(void)
-{
-	// TODO
-}
-
-void chooseSteeringGain(void)
-{
-	// TODO
-}
-
-void updateLCD(void)
-{
-	// TODO
-}
 
 void Port_Init(void)
 {
 	P0MDOUT = 0xFF;
+
 	P1MDOUT = 0xFC; //set output pin for CEX2 in push-pull mode
+	P1     |= 0x03;
+	P1MDIN  = 0x03;
 
 	P3MDOUT = 0x00;
-
 	P3 = 0xFF;
 }
 
@@ -186,6 +174,11 @@ void ADC_Init(void)
 	ADC1CN = 0x80;
 }
 
+void Pick_Heading(void)
+{
+
+}
+
 void Adjust_Wheels(void)
 {
 	// Figure out the current error based on the desired and current heading
@@ -197,38 +190,35 @@ void Adjust_Wheels(void)
 		error += 3600;
 	
 	// Figure out our desired pulsewidth using our value for k_p
-	EC_PW = EC_PW_NEUT + 5 * error / 12;
+	steer_pw = steer_pw_NEUT + 5 * error / 12;
 	
 	// Make sure our desired pulsewidth is within the maximum bounds of the servo
-	if (EC_PW > EC_PW_MAX)
-		EC_PW = EC_PW_MAX;
-	else if (EC_PW < EC_PW_MIN)
-		EC_PW = EC_PW_MIN;
+	if (steer_pw > steer_pw_MAX)
+		steer_pw = steer_pw_MAX;
+	else if (steer_pw < steer_pw_MIN)
+		steer_pw = steer_pw_MIN;
 	
 	// Update PCA pulsewidth
-    PCA0CP0 = 0xFFFF - EC_PW;
+    PCA0CP0 = 0xFFFF - steer_pw;
 }
 
 void Drive_Motor(void)
 {
-	if (current_range <= 10)
+	if (current_range >= 55)
 	{
-		UR_PW = PW_UR_MIN;
+		drive_pw = speed_from_pot;
 	}
-	else if (current_range >= 40 && current_range <= 50)
+	else if (current_range <= 12 || (current_range <= 20 && steer_pw==STEER_PW_MIN))
 	{
-		UR_PW = PW_UR_NEUT;
-	}
-	else if (current_range >= 90)
-	{
-		UR_PW = PW_UR_MAX;
+		drive_pw = DRIVE_PW_NEUT;
 	}
 	else
 	{
-		UR_PW = PW_UR_MIN + 18 * current_range;
+		TODO
+		steer_pw = ***************************;
 	}
 
-	PCA0CP2 = 0xFFFF - UR_PW;
+	PCA0CP2 = 0xFFFF - drive_pw;
 }
 
 unsigned int Read_Compass(void)
@@ -253,7 +243,7 @@ unsigned int Read_Ranger(void)
 	return range;
 }
 
-void ping_ranger(void)
+void Ping_Ranger(void)
 {	
 	// write 0x51 to reg 0 of the ranger:
 	unsigned char Data[1];
@@ -262,13 +252,22 @@ void ping_ranger(void)
 	i2c_write_data(addr, 0, Data , 1) ; // write one byte of data to reg 0 at addr
 }
 
-unsigned char read_AD_input(unsigned char n)
+void Update_Speed(void)
 {
-	AMX1SL = n; // Set P1.n as the analog input for ADC1
+	AMX1SL = 6; // Set P1.n as the analog input for ADC1
 	ADC1CN = ADC1CN & ~0x20; // Clear the “Conversion Completed” flag
 	ADC1CN = ADC1CN | 0x10; // Initiate A/D conversion
 	while ((ADC1CN & 0x20) == 0x00);// Wait for conversion to complete
-	return ADC1; // Return digital value in ADC1 register
+	speed_from_pot = (DRIVE_PW_MAX-DRIVE_PW_MIN/255)*ADC1+DRIVE_PW_MIN; 
+}
+
+void Update_Battery(void)
+{
+	AMX1SL = 7; // Set P1.n as the analog input for ADC1
+	ADC1CN = ADC1CN & ~0x20; // Clear the “Conversion Completed” flag
+	ADC1CN = ADC1CN | 0x10; // Initiate A/D conversion
+	while ((ADC1CN & 0x20) == 0x00);// Wait for conversion to complete
+	battery_level = ADC1; // Return digital value in ADC1 register
 }
 
 void PCA_ISR(void)__interrupt 9
@@ -291,6 +290,17 @@ void PCA_ISR(void)__interrupt 9
 		{
 			new_range_flag = 1;
 			r_count = 0;
+		}
+
+		b_count++;
+		if (b_count >= 50)
+		{
+			b_count=0;
+			Update_Battery();
+			printf("SWITCHING TO BATTERY CHANNEL\r\n");
+			printf("...\r\n");
+			printf("Battery level: %u\r\n",battery_level);
+			Update_Speed();
 		}
 	}
 
