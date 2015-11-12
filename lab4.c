@@ -15,12 +15,12 @@
 #define DRIVE_PW_NEUT 2765
 #define STEER_PW_MIN 2275
 #define STEER_PW_MAX 3295
-#define STEER_PW_NEUT 2805
+#define STEER_PW_NEUT 2785
 #define PCA_START 28672
 
-#define DIST_MAX 55				// Distance to begin steering at
-#define DIST_AVOID_MIN 20		// Distance before giving up at max steering
-#define DIST_STOP 12				// Distance to stop under any conditions
+#define DIST_MAX (50+18)				// Distance to begin steering at
+#define DIST_AVOID_MIN (20+18)		// Distance before giving up at max steering
+#define DIST_STOP (12+18)				// Distance to stop under any conditions
 
 //-----------------------------------------------------------------------------
 // Function Prototypes
@@ -72,10 +72,10 @@ unsigned int current_range = 0;
 
 unsigned char wait = 0;
 
-unsigned char new_range_flag = 1;
-unsigned char new_heading_flag = 1; // flag for count of compass timing
-unsigned char new_battery_flag = 1;
-unsigned char new_LCD_flag = 1;
+unsigned char new_range_flag = 0;
+unsigned char new_heading_flag = 0; // flag for count of compass timing
+unsigned char new_battery_flag = 0;
+unsigned char new_LCD_flag = 0;
 
 int compass_adj = 0; // correction value from compass
 int range_adj = 0; // correction value from ranger
@@ -85,8 +85,8 @@ unsigned char h_count = 0; // overflow count for heading
 unsigned char b_count = 0; // overflow count for battery reading
 unsigned char l_count = 0; // overflow count for LCD reading
 
-unsigned int current_heading = 0;
-unsigned int desired_heading = 900;
+signed int current_heading = 0;
+signed int desired_heading = 900;
 
 unsigned char steering_gain = 0;
 
@@ -106,8 +106,9 @@ void main()
 	
 	printf("\r\nSTART\r\n");
 	
-	Update_Battery();
 	while (wait < 50);
+	
+	//Update_Battery();
 	
 	printf("Looking for heading...\r\n");
 	Pick_Heading();
@@ -135,7 +136,11 @@ void Process()
 	{
 		// If there's a new heading available, read it and update the current value
 		//Steering_Servo();
+		
+		//printf("READING HEADING\r\n");
 		current_heading = Read_Compass();
+		//printf("DONE READING HEADING\r\n");
+		
 		//printf("Degrees: %i\r\nServo pulsewidth:%u\r\n", current_heading, steer_pw);
 		new_heading_flag = 0;
 	}
@@ -143,6 +148,7 @@ void Process()
 	if (new_range_flag)
 	{
 		Drive_Motor();
+		
 		current_range = Read_Ranger();
 		new_range_flag = 0;
 		Ping_Ranger();
@@ -195,6 +201,8 @@ void Pick_S_Gain(void)
 
 void Drive_Motor(void)
 {
+	unsigned int temp_steer_pw;
+	
 	if (current_range >= DIST_MAX)
 	{
 		// Going toward heading
@@ -212,12 +220,31 @@ void Drive_Motor(void)
 		// Steering around obstacle
 		drive_pw = speed_from_pot;
 		
-		steer_pw = (steering_gain * current_range + STEER_PW_MIN);
+		// Calculate steering to go around obstacle
+		temp_steer_pw = (STEER_PW_NEUT - steering_gain * (DIST_MAX - current_range));
+		
+		// Calculate steering toward heading for comparison
+		Steering_Goal();
+		
+		// Only adjust the steering for the obstacle if the steering to go around the obstacle is
+		//   more extreme than the steering to just continue toward the heading
+		if (temp_steer_pw < steer_pw)
+			steer_pw = temp_steer_pw;
 	}
 	
-	printDebug();
-	
 	PCA0CP2 = 0xFFFF - drive_pw;
+	
+	// Make sure our desired steering pulsewidth is within the maximum bounds of the servo
+	if (steer_pw > STEER_PW_MAX)
+		steer_pw = STEER_PW_MAX;
+	else if (steer_pw < STEER_PW_MIN)
+		steer_pw = STEER_PW_MIN;
+	
+	// Update PCA pulsewidth
+    PCA0CP0 = 0xFFFF - steer_pw;
+    
+    // Print debug information to the console
+    printDebug();
 }
 
 void printDebug(void)
@@ -231,7 +258,7 @@ void printDebug(void)
 		steer_error += 3600;
 		
 	printf("%d, %d, %d, %d, %d, %u\r\n", 12, steer_error, current_range, current_heading
-			, (100 * (steer_pw - STEER_PW_NEUT)) / (STEER_PW_MAX - STEER_PW_NEUT), speed_from_pot
+			, (100 * (steer_pw - STEER_PW_NEUT)) / (STEER_PW_MAX - STEER_PW_NEUT), drive_pw
 		);
 }
 
@@ -247,24 +274,18 @@ void Steering_Goal(void)
 	
 	// Figure out our desired pulsewidth using our value for k_p
 	steer_pw = STEER_PW_NEUT + 5 * error / 12;
-	
-	// Make sure our desired pulsewidth is within the maximum bounds of the servo
-	if (steer_pw > STEER_PW_MAX)
-		steer_pw = STEER_PW_MAX;
-	else if (steer_pw < STEER_PW_MIN)
-		steer_pw = STEER_PW_MIN;
-	
-	// Update PCA pulsewidth
-    PCA0CP0 = 0xFFFF - steer_pw;
 }
 
 void Port_Init(void)
 {
 	P0MDOUT = 0xFF;
 
-	P1MDOUT = 0x3F; //set output pin for CEX2 in push-pull mode
-	P1     |= ~0x3F;
-	P1MDIN  = 0x3F;
+	//P1MDOUT = 0x3F; 			//set output pin for CEX2 in push-pull mode
+	//P1     |= ~0x3F;
+	//P1MDIN  = 0x3F;
+	P1MDOUT = 0x0F;
+	P1 |= ~0x0F;
+	P1MDIN = 0x3F;
 
 	P3MDOUT = 0x00;
 	P3 = 0xFF;
@@ -319,8 +340,8 @@ unsigned int Read_Ranger(void)
 	i2c_read_data(addr, 2, Data, 2); // read two bytes, starting at reg 2
 	range = (((unsigned int) Data[0] << 8) | Data[1]);
 	
-	return 90;
-	//return range;
+	//return 90;
+	return range;
 }
 
 void Ping_Ranger(void)
@@ -334,17 +355,18 @@ void Ping_Ranger(void)
 
 void Update_Speed(void)
 {
-	AMX1SL = 6; // Set P1.n as the analog input for ADC1
+	AMX1SL = 5; // Set P1.n as the analog input for ADC1
 	
 	printf("# SWITCHING TO POT CHANNEL...\r\n");
-	printf("# SWITCHING TO POT CHANNEL...\r\n");
+	//printf("# SWITCHING TO POT CHANNEL...\r\n");
 	
 	ADC1CN = ADC1CN & ~0x20; // Clear the “Conversion Completed” flag
 	ADC1CN = ADC1CN | 0x10; // Initiate A/D conversion
 	while ((ADC1CN & 0x20) == 0x00);// Wait for conversion to complete
 	//speed_from_pot = ((DRIVE_PW_MAX-DRIVE_PW_MIN)/255)*ADC1+DRIVE_PW_MIN; 
-	//speed_from_pot = ((unsigned int) (3502 - 2028) * (unsigned int) ADC1) / (unsigned int) 255 + (unsigned int) 2028;
-	speed_from_pot = ADC1;
+	//printf("ADC1: %d\r\n", ADC1);
+	speed_from_pot = ((unsigned long) (3502 - 2028) * (unsigned long) ADC1) / (unsigned long) 255 + (unsigned long) 2028;
+	//speed_from_pot = ADC1;
 }
 
 void Update_Battery(void)
@@ -352,7 +374,7 @@ void Update_Battery(void)
 	AMX1SL = 7; // Set P1.n as the analog input for ADC1
 	
 	printf("# SWITCHING TO BATTERY CHANNEL...\r\n");
-	printf("# SWITCHING TO BATTERY CHANNEL...\r\n");
+	//printf("# SWITCHING TO BATTERY CHANNEL...\r\n");
 
 	ADC1CN = ADC1CN & ~0x20; // Clear the “Conversion Completed” flag
 	ADC1CN = ADC1CN | 0x10; // Initiate A/D conversion
@@ -372,7 +394,7 @@ void PCA_ISR(void) __interrupt 9
 		PCA0 = PCA_START;
 		
 		++h_count;
-		if (h_count >= 2)		// 40 ms
+		if (h_count >= 3)//2)		// 40 ms
 		{
 			new_heading_flag = 1;
 			h_count = 0;
