@@ -266,8 +266,9 @@ void printDebug(void)
 	else if (steer_error < -1800)
 		steer_error += 3600;
 		
-	printf("%d, %d, %d, %d, %d, %u\r\n", wait*20+((PCA0 - PCA_START)/(65535 - PCA_START))*20 , steer_error, current_range, current_heading
-			, (100 * (steer_pw - STEER_PW_NEUT)) / (STEER_PW_MAX - STEER_PW_NEUT), drive_pw
+	printf("%d, %d, %d, %d, %d, %u\r\n", wait * 20 + ((PCA0 - PCA_START) / (65535 - PCA_START)) * 20 , steer_error, current_range, current_heading
+			, ((signed long) 100 * (signed long) ((signed long) steer_pw - (signed long) STEER_PW_NEUT)) / (signed long) (STEER_PW_MAX - STEER_PW_NEUT)
+			, drive_pw
 		);
 }
 
