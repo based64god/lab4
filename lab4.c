@@ -47,11 +47,10 @@ void PCA_ISR(void) __interrupt 9;
 void Update_Battery(void);
 void Pick_S_Gain(void);
 void Update_Speed(void);
-void Update_Speed(void);
 void Process(void);
-//void Steering_Servo(void);
 unsigned int Read_Compass(void);
-//void Steering_Servo(void);
+
+void Paused_LCD(void);
 void Update_LCD(void);
 void Steering_Goal(void);
 void printDebug(void);
@@ -70,7 +69,7 @@ unsigned int steer_pw = STEER_PW_NEUT;
 
 unsigned int current_range = 0;
 
-unsigned char wait = 0;
+unsigned int wait = 0;
 
 unsigned char new_range_flag = 0;
 unsigned char new_heading_flag = 0; // flag for count of compass timing
@@ -129,7 +128,10 @@ void Process()
 		steer_pw = STEER_PW_NEUT;
 		PCA0CP0 = 0xFFFF - steer_pw;
 		PCA0CP2 = 0xFFFF - drive_pw;
-		while (!RUN);
+		while (!RUN)
+		{
+			Paused_LCD();
+		}
 	}
 
 	if (new_heading_flag)
@@ -169,6 +171,12 @@ void Process()
 		
 		new_LCD_flag = 0;
 	}
+}
+
+void Paused_LCD(void)
+{
+	lcd_clear();
+	lcd_print("Car Ready\n");
 }
 
 void Update_LCD(void)
@@ -257,7 +265,7 @@ void printDebug(void)
 	else if (steer_error < -1800)
 		steer_error += 3600;
 		
-	printf("%d, %d, %d, %d, %d, %u\r\n", 12, steer_error, current_range, current_heading
+	printf("%d, %d, %d, %d, %d, %u\r\n", wait*20+((PCA0 - PCA_START)/(65535 - PCA_START))*20 , steer_error, current_range, current_heading
 			, (100 * (steer_pw - STEER_PW_NEUT)) / (STEER_PW_MAX - STEER_PW_NEUT), drive_pw
 		);
 }
