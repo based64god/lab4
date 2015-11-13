@@ -47,9 +47,10 @@ void PCA_ISR(void) __interrupt 9;
 void Update_Battery(void);
 void Pick_S_Gain(void);
 void Update_Speed(void);
+void Update_Speed(void);
 void Process(void);
+//void Steering_Servo(void);
 unsigned int Read_Compass(void);
-
 void Paused_LCD(void);
 void Update_LCD(void);
 void Steering_Goal(void);
@@ -287,10 +288,7 @@ void Steering_Goal(void)
 void Port_Init(void)
 {
 	P0MDOUT = 0xFF;
-
-	//P1MDOUT = 0x3F; 			//set output pin for CEX2 in push-pull mode
-	//P1     |= ~0x3F;
-	//P1MDIN  = 0x3F;
+	
 	P1MDOUT = 0x0F;
 	P1 |= ~0x0F;
 	P1MDIN = 0x3F;
@@ -402,7 +400,7 @@ void PCA_ISR(void) __interrupt 9
 		PCA0 = PCA_START;
 		
 		++h_count;
-		if (h_count >= 3)//2)		// 40 ms
+		if (h_count >= 2)		// 40 ms
 		{
 			new_heading_flag = 1;
 			h_count = 0;
