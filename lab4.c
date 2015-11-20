@@ -10,12 +10,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <i2c.h>
+
+// Pulsewidth constants
 #define DRIVE_PW_MIN 2027
-#define DRIVE_PW_MAX 3502
 #define DRIVE_PW_NEUT 2765
+#define DRIVE_PW_MAX 3502
 #define STEER_PW_MIN 2275
-#define STEER_PW_MAX 3295
 #define STEER_PW_NEUT 2785
+#define STEER_PW_MAX 3295
+
 #define PCA_START 28672
 
 #define DIST_MAX (55 + 14)				// Distance to begin steering at
@@ -298,6 +301,7 @@ void Steering_Goal(void)
 	steer_pw = STEER_PW_NEUT + 5 * error / 12;
 }
 
+// Initialize ports
 void Port_Init(void)
 {
 	P0MDOUT = 0xFF;
@@ -310,6 +314,7 @@ void Port_Init(void)
 	P3 = 0xFF;
 }
 
+// Initialize PCS
 void PCA_Init (void)
 {
 	PCA0MD = 0x81;
@@ -320,18 +325,20 @@ void PCA_Init (void)
 	EA = 1;
 }
 
-
+// Initialize crossbar
 void XBR0_Init(void)
 {
 	XBR0 = 0x27;
 }
 
+// Initialize SMB
 void SMB0_Init(void)
 {
 	SMB0CR = 0x93;
 	ENSMB = 1;
 }
 
+// Initialize ADC
 void ADC_Init(void)
 {
 	REF0CN = 0x03;
@@ -339,6 +346,7 @@ void ADC_Init(void)
 	ADC1CN = 0x80;
 }
 
+// Read current compass heading
 unsigned int Read_Compass(void)
 {
 	unsigned char addr = 0xC0; // the address of the sensor, 0xC0 for the compass
@@ -350,6 +358,7 @@ unsigned int Read_Compass(void)
 	return heading; // the heading returned in degrees between 0 and 3599
 }
 
+// Read current ranger heading
 unsigned int Read_Ranger(void)
 {
 	unsigned char Data[2];
@@ -362,6 +371,7 @@ unsigned int Read_Ranger(void)
 	return range;
 }
 
+// Instruct ranger to send a ping
 void Ping_Ranger(void)
 {	
 	// write 0x51 to reg 0 of the ranger:
@@ -406,7 +416,7 @@ void Update_Battery(void)
 
 void PCA_ISR(void) __interrupt 9
 {
-	wait++;
+	++wait;
 	
 	if (CF)
 	{
